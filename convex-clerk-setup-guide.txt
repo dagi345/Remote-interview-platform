@@ -1,0 +1,653 @@
+# Convex + Clerk Integration Guide
+
+## Environment Setup
+
+### 1. Account Setup
+
+#### Clerk Setup:
+1. Go to [Clerk Dashboard](https://dashboard.clerk.dev)
+2. Sign up or log in
+3. Create a new application
+4. Select your application type (Next.js)
+5. Choose authentication methods (Email, OAuth providers, etc.)
+
+#### Convex Setup:
+1. Go to [Convex Dashboard](https://dashboard.convex.dev)
+2. Sign up or log in
+3. Create a new project
+4. Select deployment location
+
+### 2. Required API Keys
+
+#### From Clerk Dashboard:
+```
+┌─ Dashboard -> API Keys
+├── Public Key (NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+├── Secret Key (CLERK_SECRET_KEY)
+└── Webhook Secret (Optional, for webhooks)
+```
+
+#### From Convex Dashboard:
+```
+┌─ Dashboard -> Project Settings
+├── Deployment URL
+└── Deployment Name
+```
+
+### 3. Environment Variables Setup
+
+Create a `.env.local` file in your project root:
+```env
+# Clerk Configuration
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...      # Required: Clerk public key
+CLERK_SECRET_KEY=sk_test_...                       # Required: Clerk secret key
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in            # Required: Sign in route
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up            # Required: Sign up route
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/             # Required: Redirect after sign in
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/             # Required: Redirect after sign up
+CLERK_WEBHOOK_SECRET=whsec_...                     # Optional: For webhook handling
+
+# Convex Configuration
+NEXT_PUBLIC_CONVEX_URL=your_deployment_url_here    # Required: Convex deployment URL
+CONVEX_DEPLOYMENT=your_deployment_name_here        # Optional: For CLI usage
+CONVEX_ADMIN_KEY=your_admin_key_here              # Optional: For admin operations
+
+# Development Configuration
+NODE_ENV=development                              # Optional: Environment mode
+```
+
+### 4. Environment Type Definitions
+
+Create or update your `env.d.ts` file:
+```typescript
+declare namespace NodeJS {
+  interface ProcessEnv {
+    // Clerk Variables
+    NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: string;
+    CLERK_SECRET_KEY: string;
+    NEXT_PUBLIC_CLERK_SIGN_IN_URL: string;
+    NEXT_PUBLIC_CLERK_SIGN_UP_URL: string;
+    NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: string;
+    NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: string;
+    CLERK_WEBHOOK_SECRET?: string;
+
+    // Convex Variables
+    NEXT_PUBLIC_CONVEX_URL: string;
+    CONVEX_DEPLOYMENT?: string;
+    CONVEX_ADMIN_KEY?: string;
+
+    // Environment
+    NODE_ENV: 'development' | 'production' | 'test';
+  }
+}
+```
+
+### 5. Environment File Setup
+
+1. Add to `.gitignore`:
+```gitignore
+# Environment files
+.env
+.env.local
+.env.*.local
+convex/_generated/
+
+# Clerk
+.clerk/
+
+# Development
+.dev.vars
+```
+
+2. Create `.env.example`:
+```env
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=
+CLERK_SECRET_KEY=
+NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
+NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
+NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL=/
+NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL=/
+CLERK_WEBHOOK_SECRET=
+
+# Convex
+NEXT_PUBLIC_CONVEX_URL=
+CONVEX_DEPLOYMENT=
+```
+
+### 6. Clerk Configuration
+
+1. Configure Allowed Origins in Clerk Dashboard:
+   - Add your development URL (e.g., `http://localhost:3000`)
+   - Add your production URL
+   - Add your Convex deployment URL
+
+2. Configure OAuth Providers (if using):
+   - Set up each provider in Clerk Dashboard
+   - Add callback URLs
+   - Configure scopes
+
+### 7. Environment Variable Usage
+
+#### Client-Side Usage:
+```typescript
+const clerkKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+```
+
+#### Server-Side Usage:
+```typescript
+const clerkSecret = process.env.CLERK_SECRET_KEY;
+const adminKey = process.env.CONVEX_ADMIN_KEY;
+```
+
+### 8. Validation Check
+
+Create a validation utility (`src/lib/env.ts`):
+```typescript
+export function validateEnv() {
+  const required = [
+    'NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY',
+    'CLERK_SECRET_KEY',
+    'NEXT_PUBLIC_CONVEX_URL',
+    'NEXT_PUBLIC_CLERK_SIGN_IN_URL',
+    'NEXT_PUBLIC_CLERK_SIGN_UP_URL',
+    'NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL',
+    'NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL'
+  ];
+
+  for (const var_name of required) {
+    if (!process.env[var_name]) {
+      throw new Error(`Missing required environment variable: ${var_name}`);
+    }
+  }
+
+  // Validate URL format
+  try {
+    new URL(process.env.NEXT_PUBLIC_CONVEX_URL);
+  } catch {
+    throw new Error('Invalid NEXT_PUBLIC_CONVEX_URL format');
+  }
+
+  // Validate Clerk keys format
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith('pk_')) {
+    throw new Error('Invalid Clerk publishable key format');
+  }
+  if (!process.env.CLERK_SECRET_KEY.startsWith('sk_')) {
+    throw new Error('Invalid Clerk secret key format');
+  }
+}
+```
+
+### 9. Common Issues and Solutions
+
+1. Authentication Issues:
+   - Verify Clerk keys are correct
+   - Check allowed origins in Clerk dashboard
+   - Ensure proper provider wrapping order
+
+2. Integration Issues:
+   - Verify Convex URL is correct
+   - Check Clerk webhook configuration
+   - Ensure environment variables are loaded
+
+3. Development Setup:
+   - Run both `npx convex dev` and `npm run dev`
+   - Check for CORS issues
+   - Verify proper routing configuration
+
+4. Production Deployment:
+   - Add all variables to hosting platform
+   - Configure production URLs in Clerk
+   - Set up proper webhook endpoints
+
+### 10. Multiple Environments
+
+For multiple environments, create separate applications in both Clerk and Convex:
+
+1. Development:
+   - Separate Clerk application
+   - Separate Convex deployment
+   - Local environment variables
+
+2. Staging:
+   - Staging Clerk application
+   - Staging Convex deployment
+   - Staging environment variables
+
+3. Production:
+   - Production Clerk application
+   - Production Convex deployment
+   - Production environment variables
+
+Remember:
+- Never commit actual keys
+- Use different applications for different environments
+- Keep track of webhook secrets
+- Monitor both Clerk and Convex dashboards
+
+## Table of Contents
+1. Initial Setup
+2. Project Structure
+3. Authentication Setup
+4. Provider Configuration
+5. User Management
+6. Protected Routes
+7. Common Patterns
+8. Best Practices
+
+## 1. Initial Setup
+
+Install required dependencies:
+```bash
+npm install convex @clerk/nextjs @clerk/clerk-react
+```
+
+Initialize Convex:
+```bash
+npx convex dev
+```
+
+## 2. Project Structure
+
+Recommended project structure:
+```
+src/
+  ├── app/
+  │   ├── layout.tsx           # Root layout with providers
+  │   ├── sign-in/
+  │   │   └── [[...sign-in]]/
+  │   │       └── page.tsx     # Clerk sign-in page
+  │   └── sign-up/
+  │       └── [[...sign-up]]/
+  │           └── page.tsx     # Clerk sign-up page
+  ├── components/
+  │   └── providers/
+  │       ├── ConvexClerkProvider.tsx
+  │       └── AuthProvider.tsx
+convex/
+  ├── _generated/
+  ├── auth.config.ts          # Clerk auth configuration
+  ├── schema.ts              # Database schema
+  ├── users.ts              # User management
+  └── tsconfig.json
+```
+
+## 3. Authentication Setup
+
+### Environment Variables (.env.local):
+```
+# Clerk
+NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_...
+CLERK_SECRET_KEY=sk_test_...
+
+# Convex
+NEXT_PUBLIC_CONVEX_URL=your_convex_deployment_url
+```
+
+### Clerk Configuration (convex/auth.config.ts):
+```typescript
+import { v } from "convex/values";
+import { defineAuth } from "convex/server";
+import { ConvexClerkConfiguration } from "convex-clerk-adapter";
+
+// Update this object to match your Clerk configuration
+export default defineAuth({
+  providers: [
+    {
+      domain: "https://your-clerk-domain.clerk.accounts.dev",
+      applicationID: "convex",
+    },
+  ],
+});
+```
+
+## 4. Provider Configuration
+
+### Combined Provider (src/components/providers/ConvexClerkProvider.tsx):
+```typescript
+"use client";
+
+import { ClerkProvider, useAuth } from "@clerk/nextjs";
+import { ConvexProviderWithClerk } from "convex/react-clerk";
+import { ConvexReactClient } from "convex/react";
+import { ReactNode } from "react";
+
+const convex = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
+
+export default function ConvexClerkProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  return (
+    <ClerkProvider
+      publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY!}
+    >
+      <ConvexProviderWithClerk client={convex} useAuth={useAuth}>
+        {children}
+      </ConvexProviderWithClerk>
+    </ClerkProvider>
+  );
+}
+```
+
+### Root Layout Implementation (src/app/layout.tsx):
+```typescript
+import ConvexClerkProvider from "@/components/providers/ConvexClerkProvider";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html lang="en">
+      <body>
+        <ConvexClerkProvider>{children}</ConvexClerkProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+## 5. User Management
+
+### User Schema (convex/schema.ts):
+```typescript
+import { defineSchema, defineTable } from "convex/schema";
+import { v } from "convex/values";
+
+export default defineSchema({
+  users: defineTable({
+    name: v.string(),
+    email: v.string(),
+    clerkId: v.string(),
+    role: v.union(v.literal("user"), v.literal("admin")),
+    image: v.optional(v.string()),
+    createdAt: v.number(),
+  })
+  .index("by_clerk_id", ["clerkId"])
+  .index("by_email", ["email"]),
+});
+```
+
+### User Sync (convex/users.ts):
+```typescript
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
+export const syncUser = mutation({
+  args: {
+    name: v.string(),
+    email: v.string(),
+    clerkId: v.string(),
+    image: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const existingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    if (existingUser) {
+      return await ctx.db.patch(existingUser._id, {
+        name: args.name,
+        email: args.email,
+        image: args.image,
+      });
+    }
+
+    return await ctx.db.insert("users", {
+      ...args,
+      role: "user",
+      createdAt: Date.now(),
+    });
+  },
+});
+
+export const getUser = query({
+  args: { clerkId: v.string() },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+      .first();
+
+    return user;
+  },
+});
+```
+
+## 6. Protected Routes
+
+### Middleware Setup (src/middleware.ts):
+```typescript
+import { authMiddleware } from "@clerk/nextjs";
+
+export default authMiddleware({
+  publicRoutes: ["/", "/api/webhooks/clerk"],
+});
+
+export const config = {
+  matcher: ["/((?!.+\\.[\\w]+$|_next).*)", "/", "/(api|trpc)(.*)"],
+};
+```
+
+### Protected API Functions (convex/posts.ts):
+```typescript
+import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
+
+export const createPost = mutation({
+  args: {
+    title: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthenticated");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .first();
+    
+    if (!user) throw new Error("User not found");
+
+    return await ctx.db.insert("posts", {
+      ...args,
+      authorId: user._id,
+      createdAt: Date.now(),
+    });
+  },
+});
+```
+
+## 7. Common Patterns
+
+### User Authentication Hook (src/hooks/useAuth.ts):
+```typescript
+import { useConvexAuth } from "convex/react";
+import { useUser } from "@clerk/nextjs";
+import { api } from "@/convex/_generated/api";
+import { useQuery } from "convex/react";
+
+export const useAuth = () => {
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth();
+  const { user, isLoaded: isUserLoaded } = useUser();
+  const dbUser = useQuery(api.users.getUser, 
+    user?.id ? { clerkId: user.id } : "skip"
+  );
+
+  return {
+    isAuthenticated,
+    isLoading: isAuthLoading || !isUserLoaded,
+    user: dbUser,
+    clerkUser: user,
+  };
+};
+```
+
+### Protected Component:
+```typescript
+"use client";
+import { useAuth } from "@/hooks/useAuth";
+
+export default function ProtectedComponent() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated || !user) {
+    return <div>Please sign in</div>;
+  }
+
+  return <div>Protected content for {user.name}</div>;
+}
+```
+
+### User Sync on Sign In:
+```typescript
+"use client";
+import { useUser } from "@clerk/nextjs";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useEffect } from "react";
+
+export default function UserSync() {
+  const { user } = useUser();
+  const syncUser = useMutation(api.users.syncUser);
+
+  useEffect(() => {
+    if (!user) return;
+
+    syncUser({
+      clerkId: user.id,
+      email: user.emailAddresses[0].emailAddress,
+      name: user.fullName || "",
+      image: user.imageUrl,
+    });
+  }, [user, syncUser]);
+
+  return null;
+}
+```
+
+## 8. Best Practices
+
+1. Authentication Flow:
+```typescript
+// src/components/AuthCheck.tsx
+"use client";
+import { useConvexAuth } from "convex/react";
+import { redirect } from "next/navigation";
+
+export default function AuthCheck({
+  children,
+  redirectTo = "/sign-in",
+}: {
+  children: React.ReactNode;
+  redirectTo?: string;
+}) {
+  const { isAuthenticated, isLoading } = useConvexAuth();
+
+  if (isLoading) {
+    return <div>Loading...</div>;
+  }
+
+  if (!isAuthenticated) {
+    redirect(redirectTo);
+  }
+
+  return <>{children}</>;
+}
+```
+
+2. Role-Based Access:
+```typescript
+// convex/users.ts
+export const hasRole = query({
+  args: { role: v.union(v.literal("user"), v.literal("admin")) },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return false;
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .first();
+
+    return user?.role === args.role;
+  },
+});
+```
+
+3. Protected API Wrapper:
+```typescript
+// convex/withAuth.ts
+import { QueryCtx, MutationCtx } from "./_generated/server";
+
+export async function withAuth<T>(
+  ctx: QueryCtx | MutationCtx,
+  action: (userId: string) => Promise<T>
+): Promise<T> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) throw new Error("Unauthenticated");
+
+  const user = await ctx.db
+    .query("users")
+    .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+    .first();
+
+  if (!user) throw new Error("User not found");
+
+  return await action(user._id);
+}
+```
+
+Usage:
+```typescript
+export const createPost = mutation({
+  args: {
+    title: v.string(),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await withAuth(ctx, async (userId) => {
+      return await ctx.db.insert("posts", {
+        ...args,
+        authorId: userId,
+        createdAt: Date.now(),
+      });
+    });
+  },
+});
+```
+
+## Common Issues and Solutions
+
+1. Authentication State Not Syncing:
+   - Ensure providers are properly wrapped
+   - Check environment variables
+   - Verify Clerk domain configuration
+
+2. User Data Not Persisting:
+   - Implement UserSync component
+   - Check Convex schema
+   - Verify database indexes
+
+3. Protected Routes Not Working:
+   - Check middleware configuration
+   - Verify public routes
+   - Ensure proper provider order
+
+Remember:
+- Always handle loading states
+- Implement proper error boundaries
+- Keep user data in sync
+- Use TypeScript for better type safety
+- Monitor Clerk and Convex dashboards
+- Test authentication flows thoroughly 

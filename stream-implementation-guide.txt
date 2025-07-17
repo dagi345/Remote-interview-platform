@@ -1,0 +1,619 @@
+# Stream Video Implementation Guide
+
+## Environment Setup
+
+### 1. Stream Account Setup
+1. Go to [Stream's Dashboard](https://getstream.io/dashboard/)
+2. Sign up or log in to your Stream account
+3. Create a new app or select an existing one
+4. Navigate to the app settings
+
+### 2. Required API Keys
+From your Stream dashboard, collect the following:
+```
+┌─ Dashboard -> App -> App Settings
+├── API Key (Client Side)
+├── API Secret (Server Side)
+└── App ID
+```
+
+### 3. Environment Variables Setup
+
+Create a `.env.local` file in your project root:
+```env
+# Stream Configuration
+NEXT_PUBLIC_STREAM_KEY=your_stream_api_key_here      # Required: The public API key from Stream dashboard
+STREAM_SECRET=your_stream_secret_here                # Required: The secret key from Stream dashboard
+STREAM_APP_ID=your_stream_app_id_here               # Required: Your Stream app ID
+
+# Optional Configuration
+STREAM_SERVER_ENDPOINT=your_server_endpoint         # Optional: Custom server endpoint if using one
+STREAM_EDGE_OVERRIDE=your_edge_override            # Optional: Custom edge override
+```
+
+### 4. Environment Type Definitions
+Create or update your `env.d.ts` file:
+```typescript
+declare namespace NodeJS {
+  interface ProcessEnv {
+    NEXT_PUBLIC_STREAM_KEY: string;
+    STREAM_SECRET: string;
+    STREAM_APP_ID: string;
+    STREAM_SERVER_ENDPOINT?: string;
+    STREAM_EDGE_OVERRIDE?: string;
+  }
+}
+```
+
+### 5. Environment Variable Usage
+
+#### Client-Side Usage:
+Only use environment variables prefixed with `NEXT_PUBLIC_` in client components:
+```typescript
+const streamKey = process.env.NEXT_PUBLIC_STREAM_KEY;
+```
+
+#### Server-Side Usage:
+```typescript
+const streamSecret = process.env.STREAM_SECRET;
+```
+
+### 6. Environment File Setup
+
+1. Add to `.gitignore`:
+```gitignore
+# Environment files
+.env
+.env.local
+.env.*.local
+```
+
+2. Create `.env.example`:
+```env
+NEXT_PUBLIC_STREAM_KEY=
+STREAM_SECRET=
+STREAM_APP_ID=
+```
+
+### 7. Validation Check
+
+Create a validation utility (`src/lib/env.ts`):
+```typescript
+export function validateEnv() {
+  const required = [
+    'NEXT_PUBLIC_STREAM_KEY',
+    'STREAM_SECRET',
+    'STREAM_APP_ID'
+  ];
+
+  for (const var_name of required) {
+    if (!process.env[var_name]) {
+      throw new Error(`Missing required environment variable: ${var_name}`);
+    }
+  }
+}
+```
+
+### 8. Common Issues and Solutions
+
+1. API Key Issues:
+   - Ensure `NEXT_PUBLIC_` prefix for client-side keys
+   - Double-check for typos in key values
+   - Verify key permissions in Stream dashboard
+
+2. Environment Loading:
+   - Restart development server after adding variables
+   - Ensure `.env.local` is in project root
+   - Check file permissions
+
+3. Production Deployment:
+   - Add variables to hosting platform (Vercel/Netlify)
+   - Keep production keys separate from development
+   - Never commit actual keys to repository
+
+## Project Structure
+
+### Next.js App Router Structure:
+```
+src/
+  ├── app/
+  │   ├── layout.tsx               # Root layout
+  │   ├── meetings/
+  │   │   └── [id]/
+  │   │       └── page.tsx         # Meeting room page
+  │   └── (routes)/
+  │       └── page.tsx             # Other pages
+  ├── components/
+  │   ├── providers/
+  │   │   └── StreamProvider.tsx   # Stream provider wrapper
+  │   ├── MeetingRoom.tsx         # Main meeting component
+  │   ├── MeetingControls.tsx     # Meeting control buttons
+  │   └── EndCallButton.tsx       # End call functionality
+  ├── hooks/
+  │   └── UseMeetingActions.ts    # Custom meeting hooks
+  └── actions/
+      └── stream.actions.ts       # Stream-related actions
+```
+
+### Next.js Pages Router Structure:
+```
+src/
+  ├── pages/
+  │   ├── _app.tsx                # Root with StreamProvider
+  │   ├── meetings/
+  │   │   └── [id].tsx            # Meeting room page
+  │   └── index.tsx               # Home page
+  ├── components/
+  │   ├── providers/
+  │   │   └── StreamProvider.tsx  # Stream provider wrapper
+  │   ├── MeetingRoom.tsx        # Main meeting component
+  │   ├── MeetingControls.tsx    # Meeting control buttons
+  │   └── EndCallButton.tsx      # End call functionality
+  ├── hooks/
+  │   └── UseMeetingActions.ts   # Custom meeting hooks
+  └── actions/
+      └── stream.actions.ts      # Stream-related actions
+```
+
+Key Differences in Implementation:
+
+1. Provider Wrapping:
+   - App Router: Wrap in `src/app/layout.tsx`
+   - Pages Router: Wrap in `src/pages/_app.tsx`
+
+2. Meeting Room Page:
+   - App Router: `src/app/meetings/[id]/page.tsx`
+   - Pages Router: `src/pages/meetings/[id].tsx`
+
+3. Client Components:
+   - App Router: Need "use client" directive
+   - Pages Router: No directive needed
+
+Example App Router Layout (`src/app/layout.tsx`):
+```typescript
+import StreamProvider from "@/components/providers/StreamProvider";
+
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <html>
+      <body>
+        <StreamProvider>
+          {children}
+        </StreamProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+Example Pages Router Layout (`src/pages/_app.tsx`):
+```typescript
+import type { AppProps } from 'next/app';
+import StreamProvider from "@/components/providers/StreamProvider";
+
+export default function App({ Component, pageProps }: AppProps) {
+  return (
+    <StreamProvider>
+      <Component {...pageProps} />
+    </StreamProvider>
+  );
+}
+```
+
+## Table of Contents
+1. Setup and Installation
+2. Provider Setup
+3. Stream Context and Hooks
+4. Meeting Room Implementation
+5. Meeting Actions
+6. Required Components
+7. Error Handling and Best Practices
+
+## 1. Setup and Installation
+
+First, install the required dependencies:
+
+```bash
+npm install @stream-io/video-react-sdk
+```
+
+Add Stream credentials to your environment variables (.env):
+```
+NEXT_PUBLIC_STREAM_KEY=your_stream_key
+STREAM_SECRET=your_stream_secret
+```
+
+## 2. Provider Setup
+
+Create a StreamProvider component (src/components/providers/StreamProvider.tsx):
+
+```typescript
+"use client";
+
+import { ReactNode, useEffect, useState } from "react";
+import { StreamVideoClient, StreamVideo } from "@stream-io/video-react-sdk";
+import { useUser } from "@clerk/nextjs";
+import LoaderUI from "../LoaderUI"
+import { streamTokenProvider } from "@/actions/stream.actions"; 
+import toast from "react-hot-toast";
+
+const StreamVideoProvider = ({ children }: { children: ReactNode }) => {
+  const [streamVideoClient, setStreamVideoClient] = useState<StreamVideoClient>();
+  const { user, isLoaded } = useUser();
+
+  useEffect(() => {
+    let mounted = true;
+    let client: StreamVideoClient | undefined;
+
+    const initClient = async () => {
+      if (!isLoaded || !user) {
+        console.log('StreamProvider: Waiting for user to load...', { isLoaded, hasUser: !!user });
+        return;
+      }
+
+      try {
+        console.log('StreamProvider: Getting token for user:', user.id);
+        // Get token first
+        const token = await streamTokenProvider();
+        console.log('StreamProvider: Token received successfully');
+        
+        // Only proceed if still mounted
+        if (!mounted) {
+          console.log('StreamProvider: Component unmounted, aborting initialization');
+          return;
+        }
+
+        // Initialize client with token
+        console.log('StreamProvider: Initializing client with token');
+        client = new StreamVideoClient({
+          apiKey: process.env.NEXT_PUBLIC_STREAM_API_KEY!,
+          user: {
+            id: user.id,
+            name: `${user.firstName || ''} ${user.lastName || ''}`.trim() || user.id,
+            image: user.imageUrl,
+          },
+          token,
+        });
+
+        // Set the client only after successful initialization
+        if (mounted) {
+          console.log('StreamProvider: Client initialized successfully');
+          setStreamVideoClient(client);
+        }
+      } catch (error) {
+        console.error('StreamProvider Error:', error);
+        if (mounted) {
+          toast.error('Failed to connect to video service');
+        }
+      }
+    };
+
+    initClient();
+
+    return () => {
+      mounted = false;
+      // Only disconnect if we're actually unmounting the provider
+      if (client && !document.hidden) {
+        console.log('StreamProvider: Cleaning up client');
+        client.disconnectUser().catch(console.error);
+      }
+    };
+  }, [user, isLoaded]);
+
+  if (!streamVideoClient) {
+    return <LoaderUI />;
+  }
+
+  return <StreamVideo client={streamVideoClient}>{children}</StreamVideo>;
+};
+
+export default StreamVideoProvider;
+```
+
+Create the token provider (src/actions/stream.actions.ts):
+
+```typescript
+"use server";
+
+import { currentUser } from "@clerk/nextjs/server";
+import { StreamClient } from "@stream-io/node-sdk";
+
+export const streamTokenProvider = async () => {
+  try {
+    const user = await currentUser();
+    console.log('Stream Token Provider: Current user:', user?.id);
+
+    if (!user) {
+      console.log('Stream Token Provider: No user found');
+      throw new Error("User not authenticated");
+    }
+
+    const streamClient = new StreamClient(
+      process.env.NEXT_PUBLIC_STREAM_API_KEY!,
+      process.env.STREAM_SECRET_KEY!
+    );
+
+    const token = streamClient.generateUserToken({ user_id: user.id });
+    console.log('Stream Token Provider: Token generated successfully');
+
+    return token;
+  } catch (error) {
+    console.error('Stream Token Provider Error:', error);
+    throw error;
+  }
+};
+```
+
+### Important Implementation Notes:
+
+1. Provider Placement:
+   - Place the StreamProvider in your root layout ONLY
+   - DO NOT wrap components with StreamProvider multiple times
+   - Example root layout usage:
+
+```typescript
+// src/app/layout.tsx or src/app/(root)/layout.tsx
+import StreamClientProvider from "@/components/providers/StreamProvider"
+
+export default function RootLayout({children} : {children:React.ReactNode}) {
+  return (
+    <StreamClientProvider>
+      {children}
+    </StreamClientProvider>
+  )
+}
+```
+
+2. Client Initialization:
+   - Always get the token before initializing the client
+   - Handle component unmounting properly
+   - Clean up client only when actually unmounting
+   - Use proper error handling and user feedback
+
+3. Common Issues:
+   - Token not set: Make sure to get token before client initialization
+   - Multiple providers: Only use one StreamProvider at the root
+   - Client cleanup: Only cleanup when actually unmounting
+   - Loading states: Handle all loading states properly
+
+## 3. Stream Context and Hooks
+
+Create a custom hook for meeting actions (src/hooks/UseMeetingActions.ts):
+
+```typescript
+import { useCallback } from 'react';
+import { useStreamVideoClient } from '@stream-io/video-react-sdk';
+
+export const useMeetingActions = () => {
+  const client = useStreamVideoClient();
+
+  const createMeeting = useCallback(async (meetingId: string) => {
+    if (!client) throw new Error('No client');
+
+    const call = client.call('default', meetingId);
+    await call.getOrCreate();
+    return call;
+  }, [client]);
+
+  const joinMeeting = useCallback(async (meetingId: string) => {
+    if (!client) throw new Error('No client');
+
+    const call = client.call('default', meetingId);
+    await call.join();
+    return call;
+  }, [client]);
+
+  const leaveMeeting = useCallback(async (meetingId: string) => {
+    if (!client) throw new Error('No client');
+
+    const call = client.call('default', meetingId);
+    await call.leave();
+  }, [client]);
+
+  return {
+    createMeeting,
+    joinMeeting,
+    leaveMeeting,
+  };
+};
+```
+
+## 4. Meeting Room Implementation
+
+Create a MeetingRoom component (src/components/MeetingRoom.tsx):
+
+```typescript
+import {
+  useCall,
+  useCallStateHooks,
+  CallControls,
+  SpeakerLayout,
+  ParticipantView,
+} from '@stream-io/video-react-sdk';
+
+export const MeetingRoom = () => {
+  const call = useCall();
+  const { useParticipants } = useCallStateHooks();
+  const participants = useParticipants();
+
+  if (!call) return null;
+
+  return (
+    <div className="flex flex-col h-screen">
+      <div className="flex-1">
+        <SpeakerLayout>
+          {participants.map((participant) => (
+            <ParticipantView participant={participant} key={participant.sessionId} />
+          ))}
+        </SpeakerLayout>
+      </div>
+      <CallControls />
+    </div>
+  );
+};
+```
+
+## 5. Meeting Actions
+
+Create stream actions (src/actions/stream.actions.ts):
+
+```typescript
+import { StreamVideo } from '@stream-io/video-react-sdk';
+
+export const generateStreamToken = async (userId: string) => {
+  try {
+    const response = await fetch('/api/stream/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId }),
+    });
+    
+    if (!response.ok) throw new Error('Failed to generate token');
+    
+    const data = await response.json();
+    return data.token;
+  } catch (error) {
+    console.error('Error generating stream token:', error);
+    throw error;
+  }
+};
+```
+
+## 6. Required Components
+
+### End Call Button Component:
+
+```typescript
+import { useCall } from '@stream-io/video-react-sdk';
+import { Button } from './ui/button';
+import { useRouter } from 'next/navigation';
+
+export const EndCallButton = () => {
+  const call = useCall();
+  const router = useRouter();
+
+  const handleEndCall = async () => {
+    try {
+      await call?.leave();
+      router.push('/');
+    } catch (error) {
+      console.error('Error ending call:', error);
+    }
+  };
+
+  return (
+    <Button 
+      onClick={handleEndCall}
+      variant="destructive"
+    >
+      End Call
+    </Button>
+  );
+};
+```
+
+### Meeting Setup Component:
+
+```typescript
+import { useEffect } from 'react';
+import { useCall } from '@stream-io/video-react-sdk';
+
+export const MeetingSetup = ({ meetingId }: { meetingId: string }) => {
+  const call = useCall();
+
+  useEffect(() => {
+    if (!call) return;
+
+    const setupMeeting = async () => {
+      try {
+        await call.join();
+        await call.camera.enable();
+        await call.microphone.enable();
+      } catch (error) {
+        console.error('Error setting up meeting:', error);
+      }
+    };
+
+    setupMeeting();
+  }, [call]);
+
+  return null;
+};
+```
+
+## 7. Error Handling and Best Practices
+
+1. Always check for client existence before making calls:
+```typescript
+if (!client) throw new Error('No client available');
+```
+
+2. Handle permissions properly:
+```typescript
+try {
+  await call.camera.enable();
+  await call.microphone.enable();
+} catch (error) {
+  console.error('Permission error:', error);
+  // Show user-friendly error message
+}
+```
+
+3. Cleanup on component unmount:
+```typescript
+useEffect(() => {
+  return () => {
+    call?.leave();
+  };
+}, [call]);
+```
+
+4. Implement proper loading states:
+```typescript
+if (!call || loading) {
+  return <LoaderUI />;
+}
+```
+
+## Implementation Steps:
+
+1. Set up environment variables with Stream credentials
+2. Implement StreamProvider at the meeting page level
+3. Create necessary components (MeetingRoom, EndCallButton, etc.)
+4. Implement meeting actions (create, join, leave)
+5. Add error handling and loading states
+6. Test camera and microphone permissions
+7. Implement cleanup functions
+
+## Common Issues and Solutions:
+
+1. Token Generation Issues:
+   - Ensure proper user authentication
+   - Verify Stream credentials
+   - Check token expiration
+
+2. Permission Problems:
+   - Request permissions before joining
+   - Handle denied permissions gracefully
+   - Provide clear user feedback
+
+3. Connection Issues:
+   - Implement reconnection logic
+   - Show connection status
+   - Handle timeout scenarios
+
+## Best Practices:
+
+1. Always wrap stream components with StreamProvider
+2. Implement proper error boundaries
+3. Handle device permission changes
+4. Clean up resources on unmount
+5. Use loading states for better UX
+6. Implement reconnection logic
+7. Handle edge cases (no camera, no mic, etc.)
+
+This implementation guide provides a solid foundation for implementing Stream video features in a Next.js application. Adjust the components and logic according to your specific needs and UI requirements. 
