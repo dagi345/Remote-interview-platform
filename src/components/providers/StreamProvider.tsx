@@ -70,6 +70,17 @@ const StreamVideoProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [user, isLoaded]);
 
+  // If user is not loaded yet, render children without Stream context
+  if (!isLoaded) {
+    return <>{children}</>;
+  }
+
+  // If no user is signed in, render children without Stream context
+  if (!user) {
+    return <>{children}</>;
+  }
+
+  // Only show loading when we're initializing the client for a signed-in user
   if (!streamVideoClient) {
     return <LoaderUI />;
   }
